@@ -3,5 +3,5 @@
 
 ## COMBINATION COMPARISON ##
 echo -e "DATASET RGB"
-python config/config.py 1
+python config/config.py 3
 python train.py
