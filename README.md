@@ -134,5 +134,9 @@ nilai `frame/stitch` dan `resolution` bisa diatur argumen `--frames` dan `--res`
 - `dataset/` : Berisi dataset (Download manual dari Google Drive)
 - `prediction/` : Berisi sample video (Download manual dari Google Drive)
 
+
+## Run Tensorboard
+- `tensorboard --logdir=/lightning_logs/`
+
 ## Reference:
 - TODO

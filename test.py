@@ -1,11 +1,28 @@
 import cv2
 import numpy as np
-from numpy.lib.index_tricks import AxisConcatenator
+import os
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 
-image1 = cv2.imread('dataset_lbp/images/2021-07-08-135743g1b1.jpg',cv2.IMREAD_GRAYSCALE)
-image1 = np.expand_dims(image1,axis=2)
-image2 = cv2.imread('dataset/images/2021-07-08-135743g1b1.jpg')
-print(image1.shape)
-print(image2.shape)
-image = np.concatenate((image1,image2))
-print(image.shape)
+def get_filelist(path):
+        """
+        Returns a list of absolute paths to images inside given `path`
+        """
+        files_list = list()
+        for filename in os.listdir(path):
+            files_list.append(os.path.splitext(filename)[0])
+        return files_list
+
+dataset_path = "dataset_old"
+
+file_list = get_filelist(os.path.join(dataset_path, "images"))
+
+# print(file_list)
+
+kfold = KFold(5, True, 1)
+
+for train, test in kfold.split(file_list):
+    print(test)
+    holder = [file_list[i] for i in test]
+    print(holder)
+    print("=================")

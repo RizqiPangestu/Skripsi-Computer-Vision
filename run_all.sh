@@ -1,7 +1,6 @@
 #!/bin/bash
 
 
-## COMBINATION COMPARISON ##
-echo -e "DATASET RGB"
-python config/config.py 3
+## CONFIGURATION COMPARISON ##
+echo -e "Model UNet 0.01 8"
 python train.py

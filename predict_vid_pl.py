@@ -5,6 +5,7 @@ import cv2
 import torch
 import numpy as np
 from skimage import feature
+import pytorch_lightning as pl
 
 #import arsitektur CNN Deep learning
 #pelajari di deeplearning/CNNSegmentation.py
@@ -16,8 +17,9 @@ GREEN = (0,255,0)
 color = (RED, GREEN)  # RED dan GREEN, sesuaikan jumlah class
 
 #DEFINE DIREKTORI
-video_dir = "dataset_unlabelled/papan1.mp4"
+video_dir = "dataset_test/papan1.mp4"
 model_path = "model/model_jit.pt"
+mod_dir = "model/"
 frame_dim = [480, 640] #HxW
 input_dim = (256,256)
 
@@ -50,11 +52,43 @@ def normalize(img, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pi
     return img
 
 #OPEN CONFIGURATION
-with open("config.yml", 'r') as f:
+with open(mod_dir+"model_config.yml", 'r') as f:
 	config = yaml.load(f, Loader=yaml.FullLoader)
 
+# LOAD ARSITEKTUR DAN WEIGHTS MODEL
+print("\n==========================================")
+print("IMPORT ARSITEKTUR DL: "+config['arch']+" DENGAN CONV BLOCK: "+str(config['conv_block'])+" DAN COMPILE")
+#buat arsitektur
+if config['arch'] == 'UNet':
+    ckpt_path = "lightning_logs/UNet/checkpoints/epoch=260-step=12788.ckpt"
+elif config['arch'] == 'ResNet50':
+    ckpt_path = "lightning_logs/ResNet50/checkpoints/epoch=321-step=8049.ckpt"
+elif config['arch'] == 'ResNet101':
+    ckpt_path = "lightning_logs/ResNet101/checkpoints/epoch=225-step=5649.ckpt"
+
+class SegmentationModel(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        #buat arsitektur
+        if config['arch'] == 'UNet':
+            self.model = CNNSegmentation.UNet(n_class=config['n_class'], conv_block=config['conv_block'], in_channel_dim=config['in_channel_dim']) #ambil channel tensor dim
+        elif config['arch'] == 'ResNet50':
+            self.model = CNNSegmentation.ResNet(CNNSegmentation.Bottleneck, [3, 4, 6, 3], num_classes = config['n_class'])
+        elif config['arch'] == 'ResNet101':
+            self.model = CNNSegmentation.ResNet(CNNSegmentation.Bottleneck, [3, 4, 23, 3], num_classes=config['n_class'])
+    
+    def forward(self, x):
+        return self.model(x)
+
 #load bobot-bobot network
-model = torch.jit.load(model_path)
+# model = torch.jit.load(model_path)
+model = SegmentationModel()
+model = model.load_from_checkpoint(ckpt_path)
+#cek apakah model di train pada multi-GPU (GPU > 1)
+#jika iya maka harus diparalel juga ketika load model
+if config['n_gpu'] > 1:
+    print("MODEL DI TRAIN PADA MULTI-GPU, MAKA MODEL JUGA HARUS DIPARALEL UNTUK INFERENCE")
+    model = torch.nn.DataParallel(model)
 #pindah model ke VRAM GPU atau CPU tergantung cuda availability di atas
 model.to(device)
 #ganti ke mode eval untuk inference, seperti validation setelah training
@@ -63,13 +97,17 @@ model.eval()
 print("\n==========================================")
 print("OPEN VIDEO CAM......")
 cam = cv2.VideoCapture(video_dir)
-size = (int(cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-videoWriter = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('I','4','2','0'),10, size)
+size = (frame_dim[1],
+        frame_dim[0])
+videoWriter = cv2.VideoWriter(config['arch']+'.avi', cv2.VideoWriter_fourcc('I','4','2','0'),10, size)
 success,_ = cam.read()
 
 print("\n==========================================")
 print("INFERENCE ON "+devicename)
+
+def normalize_img(img):
+    img = np.uint8(np.where(img>127, 255, 0))
+    return img
 
 while success:
 	#ambil waktu mulai
@@ -79,17 +117,6 @@ while success:
 	# Read frame video
 	_,img = cam.read()
 	# Load image
-	# gx = cv2.Sobel(img,cv2.CV_64F,dx=1,dy=0)
-	# gy = cv2.Sobel(img,cv2.CV_64F,dx=0,dy=1)
-	# gx = cv2.convertScaleAbs(gx)
-	# gy = cv2.convertScaleAbs(gy)
-	# sobel = cv2.addWeighted(gx,0.5,gy,0.5,0)
-
-	# gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-	# lbp = feature.local_binary_pattern(gray,44,2, method="ror")
-	# img = np.dstack((lbp,lbp))
-	# img = np.dstack((img,lbp))
-
 	img = cv2.resize(img, (frame_dim[1], frame_dim[0]), interpolation = cv2.INTER_AREA)
 	#print(img.shape)
 
@@ -115,7 +142,7 @@ while success:
 	#pindah tensor Ypred dari GPU ke cpu untuk pemrosesan lebih lanjut
 	Y_pred = torch.sigmoid(Y_pred).cpu().detach().numpy()
 
-	print(Y_pred.shape)
+	# print(Y_pred.shape)
 	#Y_pred[0][j] berarti mengambil batch ke 0 dan mask class ke j, 2D lainnya adalah H x W
 	#dikali 255 berarti dikembalikan ke 8bit dari normalisasi
 	#final_mask = []
@@ -123,12 +150,15 @@ while success:
 	for j in range(config['n_class']):
 		pred_mask = (Y_pred[0][j] * 255).astype('uint8')
 		res_mask = cv2.resize(pred_mask, (img.shape[1], img.shape[0])) #WxH
+		thresh_img = normalize_img(res_mask)
+		# cv2.imshow(f"Res mask{j}",thresh_img)
 
 		#CETAK MASK UNTUK SETIAP OBJECT UNTUK PERHITUNGAN JUMLAH OBJECT
 		#deteksi berapa object dalam 1 frame
 		# frame class 0 sendiri, frame class 1 sendiri
-		ret, labels = cv2.connectedComponents(res_mask)
+		ret, labels = cv2.connectedComponents(thresh_img)
 		label_hue = np.uint8(179 * labels / np.max(labels))
+		# cv2.imshow(f"image{j}",label_hue)
 		#buat blank channel untuk di gabung
 		blank_ch = 255 * np.ones_like(label_hue)
 		#gabung ketiga channel sehingga jadi WxHxchannel
@@ -140,17 +170,16 @@ while success:
 	
 		#cetak
 		print_n_obj = config['class_name'][j]+" = "+str(ret-1)
-		print(print_n_obj)
+		# print(print_n_obj)
 		
 		res_mask = np.expand_dims(res_mask, axis=-1) #tambahkan channel di axis paling akhir, jadi #H x W x channel seperti image
 		if j==0:
 			img_mask[:,:,2:3] = img[:,:,2:3] + res_mask #apply mask kelas 0 ke channel RED image
 		elif j==1:
-    			img_mask[:,:,1:2] = img[:,:,1:2] + res_mask #apply mask kelas 1 ke channel GREEN image
-		
+			img_mask[:,:,1:2] = img[:,:,1:2] + res_mask #apply mask kelas 1 ke channel GREEN image
 		
 		#tulis jumlah object di frame
-		posisi = [frame_dim[1]-int(frame_dim[1]*0.25), frame_dim[0]-(int(frame_dim[0]*0.06)*(j+1))]
+		posisi = [img.shape[1]-int(img.shape[1]*0.25), img.shape[0]-(int(img.shape[0]*0.06)*(j+1))]
 		img_mask = cv2.putText(img_mask, print_n_obj, (posisi[0], posisi[1]), cv2.FONT_HERSHEY_SIMPLEX,  
 					1, color[j], 3, cv2.LINE_AA)
 	
@@ -164,10 +193,8 @@ while success:
             1, (0, 0, 255), 2, cv2.LINE_AA)
 	
 	#TAMPILKAN FRAME DAN HASIL RECOGNITION
-	print(printFPS)
+	# print(printFPS)
 	cv2.imshow("Welding Inspection with: "+config['arch'], img_mask)
-	cv2.imshow("Res mask",res_mask+img)
-	cv2.imshow("image",label_hue)
 	videoWriter.write(img_mask)
 	#cv2.imshow("BINARY FRAME - 1", imagex1)
 	#cv2.imshow("BINARY FRAME - 2", imagex2)

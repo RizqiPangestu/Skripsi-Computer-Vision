@@ -3,6 +3,7 @@ import yaml
 import cv2
 import torch
 import numpy as np
+import pytorch_lightning as pl
 
 #import arsitektur CNN Deep learning
 #pelajari di deeplearning/CNNSegmentation.py
@@ -15,9 +16,9 @@ color = (RED, GREEN)  # RED dan GREEN, sesuaikan jumlah class
 
 #DEFINE DIREKTORI
 model_path = "model/model_jit.pt"
-mod_dir = "model/VGG-VGG-VGG-UNet/"
-pred_dir = "tools/dataset/predict/"
-namefile = "result2021-07-08-135845g1b2.jpg"
+mod_dir = "model/"
+pred_dir = "dataset_test/"
+namefile = "image.jpg"
 
 #cek apakah akan menggunakan GPU untuk inference atau tidak
 if torch.cuda.is_available():
@@ -47,39 +48,42 @@ def normalize(img, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pi
     img *= denominator
     return img
 
-#PRINT CONFIGURATION
-print("==========================================")
-print("MODEL CONFIGURATION:")
+def normalize_img(img):
+    img = np.uint8(np.where(img>127, 255, 0))
+    return img
+
+#OPEN CONFIGURATION
 with open(mod_dir+"model_config.yml", 'r') as f:
-    config = yaml.load(f, Loader=yaml.FullLoader)
-for key in config.keys():
-    print('%s: %s' % (key, str(config[key])))
-#baca data info datanya
-with open(mod_dir+"data_info.yml", 'r') as f:
-    data_info = yaml.load(f, Loader=yaml.FullLoader)
+	config = yaml.load(f, Loader=yaml.FullLoader)
 
 # LOAD ARSITEKTUR DAN WEIGHTS MODEL
 print("\n==========================================")
 print("IMPORT ARSITEKTUR DL: "+config['arch']+" DENGAN CONV BLOCK: "+str(config['conv_block'])+" DAN COMPILE")
 #buat arsitektur
-if config['arch'] == 'NestedUNet':
-    model = CNNSegmentation.NestedUNet(n_class=config['n_class'],
-            conv_block=config['conv_block'], in_channel_dim=config['tensor_dim'][1]) #ambil channel tensor dim
-elif config['arch'] == 'UNet':
-    model = CNNSegmentation.UNet(n_class=config['n_class'],
-            conv_block=config['conv_block'], in_channel_dim=config['tensor_dim'][1]) #ambil channel tensor dim
-elif config['arch'] == 'DeepUNet':
-    model = CNNSegmentation.DeepUNet(n_class=config['n_class'],
-            conv_block=config['conv_block'], in_channel_dim=config['tensor_dim'][1]) #ambil channel tensor dim
+if config['arch'] == 'UNet':
+    ckpt_path = "lightning_logs/UNet/checkpoints/epoch=260-step=12788.ckpt"
+elif config['arch'] == 'ResNet50':
+    ckpt_path = "lightning_logs/ResNet50/checkpoints/epoch=321-step=8049.ckpt"
+elif config['arch'] == 'ResNet101':
+    ckpt_path = "lightning_logs/ResNet101/checkpoints/epoch=225-step=5649.ckpt"
 
-#cek apakah model di train pada multi-GPU (GPU > 1)
-#jika iya maka harus diparalel juga ketika load model
-if config['n_gpu'] > 1:
-    print("MODEL DI TRAIN PADA MULTI-GPU, MAKA MODEL JUGA HARUS DIPARALEL UNTUK INFERENCE")
-    model = torch.nn.DataParallel(model)
+class SegmentationModel(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        #buat arsitektur
+        if config['arch'] == 'UNet':
+            self.model = CNNSegmentation.UNet(n_class=config['n_class'], conv_block=config['conv_block'], in_channel_dim=config['in_channel_dim']) #ambil channel tensor dim
+        elif config['arch'] == 'ResNet50':
+            self.model = CNNSegmentation.ResNet(CNNSegmentation.Bottleneck, [3, 4, 6, 3], num_classes = config['n_class'])
+        elif config['arch'] == 'ResNet101':
+            self.model = CNNSegmentation.ResNet(CNNSegmentation.Bottleneck, [3, 4, 23, 3], num_classes=config['n_class'])
+    
+    def forward(self, x):
+        return self.model(x)
 
 #load bobot-bobot network
-model = torch.jit.load(model_path)
+model = SegmentationModel()
+model = model.load_from_checkpoint(ckpt_path)
 #pindah model ke VRAM GPU atau CPU tergantung cuda availability di atas
 model.to(device)
 #ganti ke mode eval untuk inference, seperti validation setelah training
@@ -89,12 +93,12 @@ print("\n==========================================")
 print("INFERENCE ON "+devicename)
 # BACA IMAGE 
 img = cv2.imread(pred_dir+namefile)
-gx = cv2.Sobel(img,cv2.CV_64F,dx=1,dy=0)
-gy = cv2.Sobel(img,cv2.CV_64F,dx=0,dy=1)
-gx = cv2.convertScaleAbs(gx)
-gy = cv2.convertScaleAbs(gy)
-sobel = cv2.addWeighted(gx,0.5,gy,0.5,0)
-img = sobel
+# gx = cv2.Sobel(img,cv2.CV_64F,dx=1,dy=0)
+# gy = cv2.Sobel(img,cv2.CV_64F,dx=0,dy=1)
+# gx = cv2.convertScaleAbs(gx)
+# gy = cv2.convertScaleAbs(gy)
+# sobel = cv2.addWeighted(gx,0.5,gy,0.5,0)
+# img = sobel
 print(img.shape) #H X W X Channel
 #img = cv2.resize(img, (config['input_w'], config['input_h'])) #W x H
 
@@ -191,7 +195,7 @@ for j in range(config['n_class']):
     labeled_img[label_hue == 0] = 0
     
     #cetak
-    print_n_obj = data_info['class_name'][j]+" = "+str(ret-1)
+    print_n_obj = config["class_name"][j]+" = "+str(ret-1)
     print(print_n_obj)
     cv2.imwrite(pred_dir+config["conv_block"][0]+"-"+config["conv_block"][1]+"-"+config["conv_block"][2]+"-"+config["arch"]+"_"+namefile+"_inst_mask"+str(j)+".jpg",labeled_img) #cetak predicted mask
     
@@ -214,8 +218,8 @@ for j in range(config['n_class']):
     
     #tulis jumlah object di frame
     posisi = [img.shape[1]-int(img.shape[1]*0.175), img.shape[0]-(int(img.shape[0]*0.05)*(j+1))]
-    imgx = cv2.putText(np.float32(imgx), print_n_obj, (posisi[0], posisi[1]), cv2.FONT_HERSHEY_SIMPLEX,  
-            4, (color[j][0], color[j][1], color[j][2]), 10, cv2.LINE_AA)
+    # imgx = cv2.putText(np.float32(imgx), print_n_obj, (posisi[0], posisi[1]), cv2.FONT_HERSHEY_SIMPLEX,  
+    #         4, (color[j][0], color[j][1], color[j][2]), 10, cv2.LINE_AA)
     
     #output = ((0.4 * img) + (0.6 * res_mask*255)).astype("uint8")
     #cv2.imwrite("wkwkwk"+str(j)+".jpg",output)

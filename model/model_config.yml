@@ -1,0 +1,36 @@
+KONFIGURASI_DATASET: =================================================
+KONFIGURASI_MODEL: =====================================================
+KONFIGURASI_SAVE_MODEL: =============================================
+arch: UNet
+best_only: true
+conv_block:
+- VGG
+- VGG
+- VGG
+data_dir: dataset/toyotav2
+early_stop: true
+epochs: 1500
+load_index: true
+loss_function: BCEDiceLoss
+lr_scheduler: ReduceLROnPlateau
+lrate:
+- 0.25
+- 2.5e-05
+- 0.5
+- 15
+mod_dir: model/VGG-VGG-VGG-UNet
+n_class: 2
+n_gpu: 4
+optimizer: SGD
+random_state: 77
+stop_counter: 150
+in_channel_dim: 3
+tensor_dim:
+- 16
+- 3
+- 256
+- 256
+val_size: 0.2
+class_name:
+- NG
+- OK

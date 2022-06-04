@@ -1,7 +1,7 @@
 KONFIGURASI_DATASET: =================================================
 KONFIGURASI_MODEL: =====================================================
 KONFIGURASI_SAVE_MODEL: =============================================
-arch: UNet
+arch: ResNet50
 best_only: true
 conv_block:
 - VGG
@@ -24,6 +24,7 @@ n_gpu: 4
 optimizer: SGD
 random_state: 77
 stop_counter: 150
+in_channel_dim: 3
 tensor_dim:
 - 16
 - 3

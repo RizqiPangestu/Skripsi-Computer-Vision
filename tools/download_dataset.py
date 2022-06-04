@@ -21,7 +21,7 @@ def fetch_url(entry):
 
 
 # JSON file exported from labelbox
-export_json_path = 'tools/labelbox.json'
+export_json_path = 'tools/labelbox_new2.json'
 
 # Output path
 images_output_path = os.path.join("dataset", "images")

@@ -9,15 +9,17 @@ print("CONFIG PATH =",path)
 with open(path, 'r') as g:
     config = yaml.load(g, Loader=yaml.FullLoader)
 
-new_input_dim = int(sys.argv[1])
+# new_input_dim = int(sys.argv[1])
 # new_dataset_path = sys.argv[1]
 # new_lr = float(sys.argv[2])
-# new_batch = int(sys.argv[3])
+new_batch = int(sys.argv[1])
+arch = sys.argv[2]
 
-config['in_channel_dim'] = new_input_dim
+# config['in_channel_dim'] = new_input_dim
 # config['dataset_path'] = new_dataset_path
 # config['learning_rate'] = new_lr
-# config['batch_size'] = new_batch
+config['batch_size'] = new_batch
+config['arch'] = arch
 
 for key in config.keys():
     print('%s: %s' % (key, str(config[key])))

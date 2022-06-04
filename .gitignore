@@ -1,1 +1,7 @@
-dataset
+dataset*
+resized_dataset*
+augment_dataset
+lightning_logs
+ori_result
+video_output
+welding_log*

@@ -1,0 +1,13 @@
+class_id:
+- 0
+- 1
+class_name:
+- NG
+- OK
+keterangan: index di-split dengan sklearn pada laptop oskar
+n_class: 2
+n_train: 970
+n_val: 243
+random_state: 1
+size_val: 0.2
+train_idx:

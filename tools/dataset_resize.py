@@ -21,6 +21,12 @@ for filename in files_list:
 
     # Load image
     image = cv2.imread(os.path.join(dataset_input_path, "images", filename + ".jpg"))
+    print(image.shape)
+    if(image.shape == (3000,3000,3)):
+        image_size = (640,640)
+    else:
+        image_size = (640,480)
+    
     image = cv2.resize(image, image_size)
     cv2.imwrite(os.path.join(dataset_output_path, "images", filename + ".jpg"), image)
     
